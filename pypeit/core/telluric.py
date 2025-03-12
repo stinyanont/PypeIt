@@ -1885,6 +1885,8 @@ def star_telluric_sci(spec1dfile, sci1dfile, telgridfile, telloutfile, outfile, 
                                         'std_dec', 'std_cal'),
                       debug=debug_init)
 
+    std_airmass = meta_spec['core']['AIRMASS']
+    sci_airmass = meta_spec_sci['core']['AIRMASS']
     # Optionally, mask prominent stellar absorption features
     mask_bad, mask_recomb, mask_tell = flux_calib.get_mask(wave, flux, ivar, mask,
                                               mask_hydrogen_lines=mask_hydrogen_lines,
@@ -1902,6 +1904,7 @@ def star_telluric_sci(spec1dfile, sci1dfile, telgridfile, telloutfile, outfile, 
     TelObj.to_file(telloutfile, overwrite=True)
 
     # Apply the telluric correction
+    tel_wave = TelObj.model['WAVE'][0,:]
     telluric = TelObj.model['TELLURIC'][0,:]
     star_model = TelObj.model['OBJ_MODEL'][0,:]
     # Plot the telluric corrected and rescaled spectrum
@@ -1912,14 +1915,18 @@ def star_telluric_sci(spec1dfile, sci1dfile, telgridfile, telloutfile, outfile, 
 
     # And the corrected science spectrum
     #interpolate the telluric spectrum to the observed wavelength
-    tell_interp = scipy.interpolate.interp1d(wave, telluric, bounds_error=False, fill_value=0.0)
+    tell_interp = scipy.interpolate.interp1d(tel_wave, telluric, bounds_error=False, fill_value=0.0)
     telluric_sci = tell_interp(wave_sci)
+
+    # Scale the model by airmass differences
+    # Following Siebert
+    telluric_sci = telluric_sci**((sci_airmass/std_airmass)**0.55)
 
     star_model_interp = scipy.interpolate.interp1d(wave, star_model, bounds_error=False, fill_value=0.0)
     star_model_sci = star_model_interp(wave_sci)
 
     flux_corr_sci = flux_sci*utils.inverse(telluric_sci)
-    ivar_corr_sci = (telluric_sci > 0.0) * ivar_scale * telluric_sci * telluric_sci
+    ivar_corr_sci = (telluric_sci > 0.0) * ivar_sci * telluric_sci * telluric_sci
     mask_corr_sci = (telluric_sci > 0.0) * mask_sci
     sig_corr_sci = np.sqrt(utils.inverse(ivar_corr_sci))   
 
@@ -1953,7 +1960,7 @@ def star_telluric_sci(spec1dfile, sci1dfile, telgridfile, telloutfile, outfile, 
     # save the telluric corrected star spectrum
     save_coadd1d_tofits(outscifile, wave_sci, flux_corr_sci, ivar_corr_sci, mask_corr_sci, wave_grid_mid=wave_grid_mid_sci,
                         spectrograph=header_sci['PYP_SPEC'], telluric=telluric_sci,
-                        obj_model=star_model_sci, header=header, ex_value='OPT', overwrite=True)
+                        obj_model=star_model_sci, header=header_sci, ex_value='OPT', overwrite=True)
     return TelObj
 
 def poly_telluric(spec1dfile, telgridfile, telloutfile, outfile, z_obj=0.0, func='legendre',
