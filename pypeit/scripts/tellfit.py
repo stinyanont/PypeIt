@@ -17,7 +17,7 @@ class TellFit(scriptbase.ScriptBase):
                                     width=width, formatter=scriptbase.SmartFormatter)
         parser.add_argument("spec1dfile", type=str,
                             help="spec1d or coadd file that will be used for telluric correction.")
-        parser.add_argument("sci1dfile", type=str, default = None,
+        parser.add_argument("--sci1dfile", type=str, default = None,
                             help="spec1d or coadd file of the science target to apply telluric correction.")
         parser.add_argument("--objmodel", type=str, default=None, choices=['qso', 'star', 'poly'],
                             help='R|science object model used in the fitting. The options are:\n'
@@ -156,8 +156,8 @@ class TellFit(scriptbase.ScriptBase):
 
         # Output filename is sci1d is provided
         if args.sci1dfile is not None:
-            outsci = (os.path.basename(args.sci1dfile)).replace('.fits','_tellcorr.fits')
-            msgs.info(f'Telluric-corrected spectrum of the provided science file will be saved to: {outsci}.')
+            outscifile = (os.path.basename(args.sci1dfile)).replace('.fits','_tellcorr.fits')
+            msgs.info(f'Telluric-corrected spectrum of the provided science file will be saved to: {outscifile}.')
             #Will have to add to the header which telluric was used to correct. 
 
         # Run the telluric fitting procedure.
@@ -211,7 +211,7 @@ class TellFit(scriptbase.ScriptBase):
                 #This function fits telluric model to the star spectrum, and applies the result to both the star
                 #and the science target. 
                 TelStar = telluric.star_telluric_sci(args.spec1dfile,args.sci1dfile, par['telluric']['telgridfile'],
-                                                 modelfile, outfile,
+                                                 modelfile, outfile, outscifile,
                                                  star_type=par['telluric']['star_type'],
                                                  star_mag=par['telluric']['star_mag'],
                                                  star_ra=par['telluric']['star_ra'],

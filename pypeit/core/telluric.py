@@ -1911,9 +1911,16 @@ def star_telluric_sci(spec1dfile, sci1dfile, telgridfile, telloutfile, outfile, 
     sig_corr = np.sqrt(utils.inverse(ivar_corr))
 
     # And the corrected science spectrum
-    flux_corr_sci = flux_sci*utils.inverse(telluric)
-    ivar_corr_sci = (telluric > 0.0) * ivar_scale * telluric * telluric
-    mask_corr_sci = (telluric > 0.0) * mask_sci
+    #interpolate the telluric spectrum to the observed wavelength
+    tell_interp = scipy.interpolate.interp1d(wave, telluric, bounds_error=False, fill_value=0.0)
+    telluric_sci = tell_interp(wave_sci)
+
+    star_model_interp = scipy.interpolate.interp1d(wave, star_model, bounds_error=False, fill_value=0.0)
+    star_model_sci = star_model_interp(wave_sci)
+
+    flux_corr_sci = flux_sci*utils.inverse(telluric_sci)
+    ivar_corr_sci = (telluric_sci > 0.0) * ivar_scale * telluric_sci * telluric_sci
+    mask_corr_sci = (telluric_sci > 0.0) * mask_sci
     sig_corr_sci = np.sqrt(utils.inverse(ivar_corr_sci))   
 
     if show:
@@ -1945,8 +1952,8 @@ def star_telluric_sci(spec1dfile, sci1dfile, telgridfile, telloutfile, outfile, 
                         obj_model=star_model, header=header, ex_value='OPT', overwrite=True)
     # save the telluric corrected star spectrum
     save_coadd1d_tofits(outscifile, wave_sci, flux_corr_sci, ivar_corr_sci, mask_corr_sci, wave_grid_mid=wave_grid_mid_sci,
-                        spectrograph=header_sci['PYP_SPEC'], telluric=telluric,
-                        obj_model=star_model, header=header, ex_value='OPT', overwrite=True)
+                        spectrograph=header_sci['PYP_SPEC'], telluric=telluric_sci,
+                        obj_model=star_model_sci, header=header, ex_value='OPT', overwrite=True)
     return TelObj
 
 def poly_telluric(spec1dfile, telgridfile, telloutfile, outfile, z_obj=0.0, func='legendre',
