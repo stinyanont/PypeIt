@@ -17,6 +17,8 @@ class TellFit(scriptbase.ScriptBase):
                                     width=width, formatter=scriptbase.SmartFormatter)
         parser.add_argument("spec1dfile", type=str,
                             help="spec1d or coadd file that will be used for telluric correction.")
+        parser.add_argument("sci1dfile", type=str, default = None,
+                            help="spec1d or coadd file of the science target to apply telluric correction.")
         parser.add_argument("--objmodel", type=str, default=None, choices=['qso', 'star', 'poly'],
                             help='R|science object model used in the fitting. The options are:\n'
                                  '\n'
@@ -152,6 +154,12 @@ class TellFit(scriptbase.ScriptBase):
         msgs.info(f'Telluric-corrected spectrum will be saved to: {outfile}.')
         msgs.info(f'Best-fit telluric model will be saved to: {modelfile}.')
 
+        # Output filename is sci1d is provided
+        if args.sci1dfile is not None:
+            outsci = (os.path.basename(args.sci1dfile)).replace('.fits','_tellcorr.fits')
+            msgs.info(f'Telluric-corrected spectrum of the provided science file will be saved to: {outsci}.')
+            #Will have to add to the header which telluric was used to correct. 
+
         # Run the telluric fitting procedure.
         if par['telluric']['objmodel']=='qso':
             # run telluric.qso_telluric to get the final results
@@ -174,29 +182,57 @@ class TellFit(scriptbase.ScriptBase):
                                            debug=args.debug, show=args.plot,
                                            chk_version=args.chk_version)
         elif par['telluric']['objmodel']=='star':
-            TelStar = telluric.star_telluric(args.spec1dfile, par['telluric']['telgridfile'],
-                                             modelfile, outfile,
-                                             star_type=par['telluric']['star_type'],
-                                             star_mag=par['telluric']['star_mag'],
-                                             star_ra=par['telluric']['star_ra'],
-                                             star_dec=par['telluric']['star_dec'],
-                                             func=par['telluric']['func'],
-                                             model=par['telluric']['model'],
-                                             polyorder=par['telluric']['polyorder'],
-                                             only_orders=par['telluric']['only_orders'],
-                                             teltype=par['telluric']['teltype'], tell_npca=par['telluric']['tell_npca'],
-                                             mask_hydrogen_lines=par['sensfunc']['mask_hydrogen_lines'],
-                                             mask_helium_lines=par['sensfunc']['mask_helium_lines'],
-                                             hydrogen_mask_wid=par['sensfunc']['hydrogen_mask_wid'],
-                                             delta_coeff_bounds=par['telluric']['delta_coeff_bounds'],
-                                             minmax_coeff_bounds=par['telluric']['minmax_coeff_bounds'],
-                                             pix_shift_bounds=par['telluric']['pix_shift_bounds'],
-                                             maxiter=par['telluric']['maxiter'],
-                                             popsize=par['telluric']['popsize'],
-                                             tol=par['telluric']['tol'],
-                                             debug_init=args.debug, disp=args.debug,
-                                             debug=args.debug, show=args.plot,
-                                             chk_version=args.chk_version)
+            # if the science target is simply a star
+            if args.sci1dfile is None:
+                TelStar = telluric.star_telluric(args.spec1dfile, par['telluric']['telgridfile'],
+                                                 modelfile, outfile,
+                                                 star_type=par['telluric']['star_type'],
+                                                 star_mag=par['telluric']['star_mag'],
+                                                 star_ra=par['telluric']['star_ra'],
+                                                 star_dec=par['telluric']['star_dec'],
+                                                 func=par['telluric']['func'],
+                                                 model=par['telluric']['model'],
+                                                 polyorder=par['telluric']['polyorder'],
+                                                 only_orders=par['telluric']['only_orders'],
+                                                 teltype=par['telluric']['teltype'], tell_npca=par['telluric']['tell_npca'],
+                                                 mask_hydrogen_lines=par['sensfunc']['mask_hydrogen_lines'],
+                                                 mask_helium_lines=par['sensfunc']['mask_helium_lines'],
+                                                 hydrogen_mask_wid=par['sensfunc']['hydrogen_mask_wid'],
+                                                 delta_coeff_bounds=par['telluric']['delta_coeff_bounds'],
+                                                 minmax_coeff_bounds=par['telluric']['minmax_coeff_bounds'],
+                                                 pix_shift_bounds=par['telluric']['pix_shift_bounds'],
+                                                 maxiter=par['telluric']['maxiter'],
+                                                 popsize=par['telluric']['popsize'],
+                                                 tol=par['telluric']['tol'],
+                                                 debug_init=args.debug, disp=args.debug,
+                                                 debug=args.debug, show=args.plot,
+                                                 chk_version=args.chk_version)
+            else:
+                #This function fits telluric model to the star spectrum, and applies the result to both the star
+                #and the science target. 
+                TelStar = telluric.star_telluric_sci(args.spec1dfile,args.sci1dfile, par['telluric']['telgridfile'],
+                                                 modelfile, outfile,
+                                                 star_type=par['telluric']['star_type'],
+                                                 star_mag=par['telluric']['star_mag'],
+                                                 star_ra=par['telluric']['star_ra'],
+                                                 star_dec=par['telluric']['star_dec'],
+                                                 func=par['telluric']['func'],
+                                                 model=par['telluric']['model'],
+                                                 polyorder=par['telluric']['polyorder'],
+                                                 only_orders=par['telluric']['only_orders'],
+                                                 teltype=par['telluric']['teltype'], tell_npca=par['telluric']['tell_npca'],
+                                                 mask_hydrogen_lines=par['sensfunc']['mask_hydrogen_lines'],
+                                                 mask_helium_lines=par['sensfunc']['mask_helium_lines'],
+                                                 hydrogen_mask_wid=par['sensfunc']['hydrogen_mask_wid'],
+                                                 delta_coeff_bounds=par['telluric']['delta_coeff_bounds'],
+                                                 minmax_coeff_bounds=par['telluric']['minmax_coeff_bounds'],
+                                                 pix_shift_bounds=par['telluric']['pix_shift_bounds'],
+                                                 maxiter=par['telluric']['maxiter'],
+                                                 popsize=par['telluric']['popsize'],
+                                                 tol=par['telluric']['tol'],
+                                                 debug_init=args.debug, disp=args.debug,
+                                                 debug=args.debug, show=args.plot,
+                                                 chk_version=args.chk_version)                
         elif par['telluric']['objmodel']=='poly':
             TelPoly = telluric.poly_telluric(args.spec1dfile, par['telluric']['telgridfile'],
                                              modelfile, outfile,

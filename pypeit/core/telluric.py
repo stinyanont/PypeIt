@@ -1836,6 +1836,8 @@ def star_telluric_sci(spec1dfile, sci1dfile, telgridfile, telloutfile, outfile, 
     This function performs the same telluric fit as star_telluric, but applies
     the correction to a different science target. 
 
+    TO DO: perform another shift, and apply airmass difference
+
     Returns
     -------
     TelObj : :class:`Telluric`
