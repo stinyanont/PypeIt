@@ -1820,6 +1820,133 @@ def star_telluric(spec1dfile, telgridfile, telloutfile, outfile, star_type=None,
 
     return TelObj
 
+def star_telluric_sci(spec1dfile, sci1dfile, telgridfile, telloutfile, outfile, outscifile, star_type=None,
+                  star_mag=None, star_ra=None, star_dec=None, func='legendre', model='exp',
+                  polyorder=5, teltype='pca', tell_npca=4, mask_hydrogen_lines=True,
+                  mask_helium_lines=False, hydrogen_mask_wid=10., delta_coeff_bounds=(-20.0, 20.0),
+                  minmax_coeff_bounds=(-5.0, 5.0), only_orders=None, sn_clip=30.0, maxiter=3,
+                  tol=1e-3, popsize=30, recombination=0.7, polish=True, disp=False,
+                  pix_shift_bounds=(-5.0,5.0), debug_init=False, debug=False, show=False,
+                  chk_version=True):
+    """
+    This needs a doc string.
+
+    USE the one from qso_telluric() as a starting point
+
+    This function performs the same telluric fit as star_telluric, but applies
+    the correction to a different science target. 
+
+    Returns
+    -------
+    TelObj : :class:`Telluric`
+        Object with the telluric modeling results
+    """
+
+    # Turn on disp for the differential_evolution if debug mode is turned on.
+    if debug:
+        disp = True
+
+    # Read in the data
+    wave, wave_grid_mid, flux, ivar, mask, meta_spec, header \
+            = general_spec_reader(spec1dfile, ret_flam=False, chk_version=chk_version)
+    # Read in the science target
+    wave_sci, wave_grid_mid_sci, flux_sci, ivar_sci, mask_sci, meta_spec_sci, header_sci \
+            = general_spec_reader(sci1dfile, ret_flam=False, chk_version=chk_version)
+    # Read in standard star dictionary and interpolate onto regular telluric wave_grid
+    star_ra = meta_spec['core']['RA'] if star_ra is None else star_ra
+    star_dec = meta_spec['core']['DEC'] if star_dec is None else star_dec
+    ###Get back here. This is probably why mag has to be 10
+    std_dict = flux_calib.get_standard_spectrum(star_type=star_type, star_mag=star_mag, ra=star_ra,
+                                                dec=star_dec)
+
+    if flux.ndim == 2:
+        norders = flux.shape[1]
+    else:
+        norders = 1
+
+    # Create the polyorder_vec
+    if np.size(polyorder) > 1:
+        if np.size(polyorder) != norders:
+            msgs.error('polyorder must have either have norder elements or be a scalar')
+        polyorder_vec = np.array(polyorder)
+    else:
+        polyorder_vec = np.full(norders, polyorder)
+
+    # Initalize the object parameters
+    obj_params = dict(std_dict=std_dict, airmass=meta_spec['core']['AIRMASS'],
+                      delta_coeff_bounds=delta_coeff_bounds,
+                      minmax_coeff_bounds=minmax_coeff_bounds, polyorder_vec=polyorder_vec,
+                      exptime=meta_spec['core']['EXPTIME'], func=func, model=model, sigrej=3.0,
+                      std_ra=std_dict['std_ra'], std_dec=std_dict['std_dec'],
+                      std_name=std_dict['name'], std_cal=std_dict['cal_file'],
+                      output_meta_keys=('airmass', 'polyorder_vec', 'exptime', 'func', 'std_ra',
+                                        'std_dec', 'std_cal'),
+                      debug=debug_init)
+
+    # Optionally, mask prominent stellar absorption features
+    mask_bad, mask_recomb, mask_tell = flux_calib.get_mask(wave, flux, ivar, mask,
+                                              mask_hydrogen_lines=mask_hydrogen_lines,
+                                              mask_helium_lines=mask_helium_lines,
+                                              mask_telluric=False, hydrogen_mask_wid=hydrogen_mask_wid)
+    mask_tot = mask_bad & mask_recomb & mask_tell
+
+    # parameters lowered for testing
+    TelObj = Telluric(wave, flux, ivar, mask_tot, telgridfile, obj_params, init_star_model,
+                      eval_star_model, pix_shift_bounds=pix_shift_bounds,
+                      teltype=teltype, tell_npca=tell_npca,
+                      sn_clip=sn_clip, tol=tol, popsize=popsize,
+                      recombination=recombination, polish=polish, disp=disp, debug=debug)
+    TelObj.run(only_orders=only_orders)
+    TelObj.to_file(telloutfile, overwrite=True)
+
+    # Apply the telluric correction
+    telluric = TelObj.model['TELLURIC'][0,:]
+    star_model = TelObj.model['OBJ_MODEL'][0,:]
+    # Plot the telluric corrected and rescaled spectrum
+    flux_corr = flux*utils.inverse(telluric)
+    ivar_corr = (telluric > 0.0) * ivar * telluric * telluric
+    mask_corr = (telluric > 0.0) * mask
+    sig_corr = np.sqrt(utils.inverse(ivar_corr))
+
+    # And the corrected science spectrum
+    flux_corr_sci = flux_sci*utils.inverse(telluric)
+    ivar_corr_sci = (telluric > 0.0) * ivar_scale * telluric * telluric
+    mask_corr_sci = (telluric > 0.0) * mask_sci
+    sig_corr_sci = np.sqrt(utils.inverse(ivar_corr_sci))   
+
+    if show:
+        # TODO: This should get moved into a Telluric.show() method.
+        # Median filter
+        fig = plt.figure(figsize=(12, 8))
+        plt.plot(wave, flux_corr*mask_corr, drawstyle='steps-mid', color='k',
+                 label='corrected data', alpha=0.7, zorder=5)
+        plt.plot(wave, flux*mask_corr, drawstyle='steps-mid', color='0.7',
+                 label='uncorrected data', alpha=0.7, zorder=3)
+        plt.plot(wave, sig_corr*mask_corr, drawstyle='steps-mid', color='r', label='noise',
+                 alpha=0.3, zorder=1)
+        plt.plot(wave, star_model, color='cornflowerblue', linewidth=1.0,
+                 label='poly scaled star model', zorder=7, alpha=0.7)
+        plt.plot(std_dict['wave'].value, std_dict['flux'].value, color='green', linewidth=1.0,
+                 label='original star model', zorder=8, alpha=0.7)
+        plt.plot(wave, star_model.max()*0.9*telluric, color='magenta', drawstyle='steps-mid',
+                 label='telluric', alpha=0.4)
+        plt.ylim(-np.median(sig_corr[mask_corr]).max(), 1.5*star_model.max())
+        plt.xlim(wave[wave > 1.0].min(), wave[wave > 1.0].max())
+        plt.legend()
+        plt.xlabel('Wavelength')
+        plt.ylabel('Flux')
+        plt.show()
+
+    # save the telluric corrected spectrum
+    save_coadd1d_tofits(outfile, wave, flux_corr, ivar_corr, mask_corr, wave_grid_mid=wave_grid_mid,
+                        spectrograph=header['PYP_SPEC'], telluric=telluric,
+                        obj_model=star_model, header=header, ex_value='OPT', overwrite=True)
+    # save the telluric corrected star spectrum
+    save_coadd1d_tofits(outscifile, wave_sci, flux_corr_sci, ivar_corr_sci, mask_corr_sci, wave_grid_mid=wave_grid_mid_sci,
+                        spectrograph=header_sci['PYP_SPEC'], telluric=telluric,
+                        obj_model=star_model, header=header, ex_value='OPT', overwrite=True)
+    return TelObj
+
 def poly_telluric(spec1dfile, telgridfile, telloutfile, outfile, z_obj=0.0, func='legendre',
                   model='exp', polyorder=3, fit_wv_min_max=None, mask_lyman_a=True, teltype='pca',
                   tell_npca=4, delta_coeff_bounds=(-20.0, 20.0), minmax_coeff_bounds=(-5.0, 5.0),
